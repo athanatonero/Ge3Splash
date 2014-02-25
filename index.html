@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>GE3 Splash Screen</title>
+    
+    <style type="text/css">
+      html { height: 100% }
+      body { height: 100%; margin: 0; padding: 0 }
+      #map-id { height: 50% }
+    </style>
+
+    <script type="text/javascript" charset="utf-8" src="cordova.js"></script>
+    <script type="text/javascript" src="http://maps.googleapis.com/maps/api/js?sensor=true"></script>
+    <script type="text/javascript" charset="utf-8">
+
+
+    document.addEventListener("resume", onResume, false);
+
+    document.addEventListener("deviceready", onDeviceReady, false);
+	
+	document.addEventListener('online', onOnline, false);
+	document.addEventListener('offline', onOffline, false);
+
+
+		var networkStatus, networkState;
+		var virginityFlag = true;
+		var theNewContact;
+		var noteTxt ='';
+		var watchid;
+		var mapPosition;
+
+/*
+start of initialization and network functions
+*/
+
+	    function onResume() {
+
+			// document.addEventListener('online', onOnline, false);
+			// document.addEventListener('offline', onOffline, false);
+
+			// networkState = chkConn();
+			// if ( networkState == Connection.NONE ) { networkStatus = false; } else { networkStatus = true; }
+			console.log("Checking: " + networkState);			
+
+			console.log("Using: " + networkStatus);
+			console.log("Virgin? " + virginityFlag);		
+			// checkConnection();	       
+		}     
+
+
+	    function onDeviceReady() {
+
+			// document.addEventListener('online', onOnline, false);
+			// document.addEventListener('offline', onOffline, false);
+
+			navigator.splashscreen.hide();
+			
+			networkState = chkConn();
+			if ( networkState == Connection.NONE ) { networkStatus = false; } else { networkStatus = true; }
+			console.log("Checking: " + networkState);
+
+			console.log("Using: " + networkStatus);
+			console.log("Virgin? " + virginityFlag);
+			if (virginityFlag) {
+				checkConnection();
+				virginityFlag = false;
+				console.log("Virgin no more");
+			}
+			
+		}
+
+
+        function checkConnection() {
+			var states = {};
+            states[Connection.UNKNOWN]  = 'Unknown connection';
+            states[Connection.ETHERNET] = 'Ethernet connection';
+            states[Connection.WIFI]     = 'WiFi connection';
+            states[Connection.CELL_2G]  = 'Cell 2G connection';
+            states[Connection.CELL_3G]  = 'Cell 3G connection';
+            states[Connection.CELL_4G]  = 'Cell 4G connection';
+            states[Connection.CELL]     = 'Cell generic connection';
+            states[Connection.NONE]     = 'No network connection';
+
+			
+			networkState = chkConn();
+		
+			if (!networkStatus) {
+				navigator.notification.alert('No network connection.\n\nActivate any connection type\n\nand press OK', function(){}, 'Disconnected');				
+				document.getElementById("netst-id").innerHTML="No network connectivity";
+				console.log("Checking: " + networkState);
+				
+			} else {
+	            navigator.notification.alert('Connection type:\n\n' + states[networkState]+ '\n\nPress OK to continue', function(){}, 'Connected');
+	            document.getElementById("netst-id").innerHTML="Network OK";
+			}
+	       
+	    }
+
+
+        function chkConn() {
+            nS = navigator.connection.type;
+			return nS;			
+        }
+
+		function onOnline() {
+			console.log("onOnline");
+			networkStatus = true;
+			console.log("Virgin? " + virginityFlag);
+			if (virginityFlag) {
+				checkConnection();
+				virginityFlag = false;
+				console.log("Virgin no more");
+			}
+			console.log("Checking: " + networkState);
+			console.log("Virgin? " + virginityFlag); 
+		}
+		 
+		function onOffline() {
+			console.log("onOffline");
+			networkStatus = false;
+			console.log("Virgin? " + virginityFlag);
+			if (virginityFlag) {
+				checkConnection();
+				virginityFlag = false;
+				console.log("Virgin no more");
+			}
+			console.log("Checking: " + networkState);
+			console.log("Virgin? " + virginityFlag);			
+		}
+
+
+/*
+start of search functions
+*/
+
+
+		function searchContactEntry() {
+			var options = new ContactFindOptions();
+			var fields = ["displayName", "name"];
+			
+			var txt = document.getElementById("textbox-id").value;
+			if (txt === '') { return; }
+			options.filter = txt;
+			options.multiple = true;
+			
+			// early starting position watch
+			watchid = navigator.geolocation.watchPosition(onGeoLocationSuccess, onGeoLocationError, { maximumAge: Infinity, timeout: 5000, enableHighAccuracy:true });
+			noteTxt = '';
+			
+			console.log("Do the search with " + options.filter + " geo watch " + watchid);
+			
+			navigator.contacts.find(fields, onContactSuccess, onContactError, options);
+
+			
+		}
+		
+		
+		function onContactSuccess(contacts) {
+			if (contacts.length !=0 ) {
+				var exactMatch = -1, i =0;
+				for (i; i < contacts.length; i++) {
+					if ( contacts[i].displayName === document.getElementById("textbox-id").value ) {
+						exactMatch = i;
+						break;
+					}
+				}
+				
+				console.log("Matches scanning ended with " + exactMatch + " " + i);
+				
+				if (exactMatch == -1) { 
+					proceedToAdd();          // partial matches are candidates to add
+				} else { 
+					navigator.notification.alert('Contact already registered\n\nPress OK to continue' , function(){}, 'Found');
+					document.getElementById("textbox-id").value = '';
+					navigator.geolocation.clearWatch(watchid);
+					
+					// don't terminate, another try
+				}
+						
+			} else {
+				proceedToAdd(); // nothing returned
+			}
+		}
+		
+
+/*
+start of contact add and geolocation functions and exit handling
+*/
+		
+		function proceedToAdd() { // here is the hot thing
+														
+		    navigator.notification.prompt(
+		        'Name not found\n\nCreate a new contact?',  	// message
+		        onCreatePrompt,            					 	// callback to invoke
+		        'Add',		            						// title
+		        ['Yes','Not now'],         						// buttonLabels
+		        document.getElementById("textbox-id").value );	// defaultText
+        }
+	
+
+
+	    function onCreatePrompt(results) {
+			
+			if (results.buttonIndex == 1) {
+				theNewContact = navigator.contacts.create({"displayName": results.input1});
+				
+
+				// but first launch a complete form for user data <-- a new page
+				if (noteTxt === '') { proceedToGeoLocation(); } 
+				launchMap();
+				
+				console.log("Geo info used :" + noteTxt); 
+				
+				theNewContact.note = noteTxt;
+				theNewContact.save(onSaveSuccess,onSaveError);
+
+				// application should terminate only around here, after having attempted to save, either ok or save error
+				
+
+			}
+			
+			console.log("all return"); 
+			var temp = document.getElementById("textbox-id");
+			if ( temp != null ) { temp.value = ''; }
+			navigator.geolocation.clearWatch(watchid);
+			// don't terminate, another try
+	    }
+
+
+		function proceedToGeoLocation() {
+			console.log("Will ask for position");
+			navigator.geolocation.getCurrentPosition(onGeoLocationSuccess, onGeoLocationError);
+    			
+		}
+		
+		function onGeoLocationSuccess(position) {
+			// for the contact
+			noteTxt = position.coords.latitude.toString().concat(", ", position.coords.longitude.toString());
+			// for the map
+			mapPosition = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
+			console.log("Position :" + noteTxt);
+			
+		}
+		
+		function onGeoLocationError(geoError) {
+			console.log("Error = " + geoError.code + " with message " + geoError.message);
+		}		
+
+		// local callbacks		
+	    function onSaveSuccess(contact) {
+			document.getElementById("contact-name-id").innerHTML ='<h1>Contact</h1><b>Contact saved</b>'+
+																	'<button onclick="onExitConfirm(1)">More</button>'+
+																	'<button onclick="onExitConfirm(2)">Done</button>';						
+	        console.log("Save Success");
+	        
+	    }
+	
+	    function onSaveError(contactError) {
+			document.getElementById("contact-name-id").innerHTML ='<h1>Contact</h1><b>Save failed</b>'+
+																	'<button onclick="onExitConfirm(1)">Again</button>'+
+																	'<button onclick="onExitConfirm(2)">Quit</button>';
+	        console.log("Error = " + contactError.code);
+	    }
+				
+			// and this is the callback
+		function onExitConfirm(buttonIndex) {
+			if (buttonIndex == 1) {
+				console.log("Wants more");
+				// restore the original html
+				document.getElementById("contact-name-id").innerHTML ='<h1>Contact</h1><b>Type in</b>'+
+															            '<input type="text" id="textbox-id">'+
+								 	        '<button id="searchbutton-id" onclick="searchContactEntry()">Search</button>';				
+			} else {
+				console.log("Wants to leave");
+				
+			// exit handling case 1 - form removed, Back must be pressed (uncomment exactly one handling)
+				
+				document.getElementById("contact-name-id").innerHTML = '<h1>Contact</h1><b>Contact saved</b>';
+				
+			// exit handling case 2 - programmatically exit application (not applicable for all platforms)
+				// 
+				// navigator.geolocation.clearWatch(watchid);
+				// navigator.app.appExit();
+			}
+		}
+
+		function onContactError() {
+			navigator.notification.alert('Something bad happened' , function(){}, 'Ooops');
+		}			
+/*
+start of map launch functions
+*/
+
+
+		function launchMap() {
+			console.log("Entering launch map with " + mapPosition );
+		    var theMap  = new google.maps.Map(document.getElementById('map-id'), {
+										mapTypeId: google.maps.MapTypeId.ROADMAP,
+										center: mapPosition,
+										zoom: 13
+									    });
+		    var marker = new google.maps.Marker({map: theMap, title: theNewContact.displayName, position: mapPosition }); 									     
+		}
+
+
+
+    </script>
+  </head>
+
+  <body>
+    <script type="text/javascript" charset="utf-8">    
+    </script>	  
+
+	<div id="network-id" >
+	    <h1>GE3</h1>
+	    <h1>Network</h1>
+	    <b id="netst-id"></b>
+	</div>
+	
+    <div id="contact-name-id" >
+	    <h1>Contact</h1>
+
+	            <b>Type in</b>
+	            <input type="text" id="textbox-id">
+	 
+	        <button id="searchbutton-id" onclick="searchContactEntry()">Search</button>
+
+
+	</div>
+	<div id="map-id" >
+	
+	</div>
+  </body>
+</html>
